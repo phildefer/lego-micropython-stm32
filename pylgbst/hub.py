@@ -89,7 +89,7 @@ class Hub(object):
 
         if self._sync_request:
             if self._sync_request.is_reply(msg):
-                print("Found matching upstream msg")
+                #print("Found matching upstream msg")
                 self._sync_replies = msg
                 self._sync_request = None
 

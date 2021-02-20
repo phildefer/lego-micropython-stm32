@@ -8,7 +8,7 @@ import time
 import micropython
 from pylgbst.comms import Connection, MOVE_HUB_HW_UUID_SERV, MOVE_HUB_HW_UUID_CHAR, \
     MOVE_HUB_HARDWARE_HANDLE
-from ble_advertising import decode_services, decode_name
+from pylgbst.comms.ble_advertising import decode_services, decode_name
 
 from micropython import const
 

@@ -128,9 +128,7 @@ class Peripheral(object):
             raise ValueError("Port is in active mode %r, unsubscribe all subscribers first" % self._port_mode)
         #print("DEBUG: subscribing ... , port mode",mode,"callback: ",callback, "granularity: ", granularity)
         self.set_port_mode(mode, True, granularity)
-        if callback or callback == closure:
-            print("Callback: ",callback)
-            print("subscribers: ",self._subscribers)
+        if callback:
             self._subscribers.add(callback)
 
     def unsubscribe(self, callback=None):
@@ -163,18 +161,19 @@ class Peripheral(object):
         """
         :rtype: tuple
         """
-        #log.warning("Unhandled port data: %r", msg)
+        print("Unhandled port data: ", msg)
+        #return None
         return ()
 
     def _handle_port_data(self, msg):
         """
         :type msg: pylgbst.messages.MsgPortValueSingle
         """
-        print("Message: ",msg)
+        #print("Message: ",msg)
         decoded = self._decode_port_data(msg)
-        print("Decoded stuff: ",decoded)
+        #print("*Decoded stuff: ",*decoded)
         assert isinstance(decoded, (tuple, list)), "Unexpected data type: %s" % type(decoded)
-        self._notify_subscribers(*decoded)
+        self._notify_subscribers(decoded)
 
     def _queue_reader(self):
         while True:
@@ -574,7 +573,7 @@ class VisionSensor(Peripheral):
     def __init__(self, parent, port):
         super(VisionSensor, self).__init__(parent, port)
 
-    def subscribe(self, callback, mode=COLOR_RGB, granularity=1): #COLOR_DISTANCE_FLOAT
+    def subscribe(self, callback, mode=COLOR_DISTANCE_FLOAT, granularity=1): #COLOR_DISTANCE_FLOAT
         super(VisionSensor, self).subscribe(callback, mode, granularity)
 
     def _decode_port_data(self, msg):
@@ -613,7 +612,7 @@ class VisionSensor(Peripheral):
         elif self._port_mode.mode == self.CALIBRATE:
             return [ushort(data, x * 2) for x in range(8)]
         else:
-            #log.debug("Unhandled VisionSensor data in mode %s: %s", self._port_mode.mode, str2hex(data))
+            print("Unhandled VisionSensor data in mode %s: %s", self._port_mode.mode, str2hex(data))
             return ()
 
     def set_color(self, color):

@@ -84,7 +84,7 @@ if __name__ == '__main__':
     parameters = {}  
     hub = MoveHub(**parameters)
     #demo_led_colors(hub)
-    #demo_voltage(hub)
+    demo_voltage(hub)
     #demo_motors_timed(hub)
     demo_color_sensor(hub)
     #demo_tilt_sensor_precise(hub)
