@@ -1,9 +1,9 @@
-#import logging
-#import traceback
+import logging
+import traceback
 
 #from pylgbst.comms import DebugServer
 
-#log = logging.getLogger('pylgbst')
+log = logging.getLogger('pylgbst')
 
 
 def get_connection_bluegiga(controller=None, hub_mac=None, hub_name=None):
@@ -60,32 +60,32 @@ def get_connection_bleak(controller='hci0', hub_mac=None, hub_name=None):
     return BleakDriver(hub_mac, hub_name)
 
 
+
+
 def get_connection_auto(controller='hci0', hub_mac=None, hub_name=None):
     fns = [
+        get_connection_stm32,
         get_connection_bluepy,
         get_connection_bluegiga,
         get_connection_gatt,
         get_connection_bleak,
         get_connection_gattool,
         get_connection_gattlib,
-        get_connection_stm32,
     ]
 
     conn = None
-    """
     for fn in fns:
         try:
-            print("Trying %s", fn.__name__)
-            conn = fn(controller, hub_mac, hub_name)
+            logging.info("Trying %s", fn.__name__)
+            return fn(controller, hub_mac, hub_name)
         except KeyboardInterrupt:
             raise
         except BaseException:
-            print("Failed")
-    """
-    conn = get_connection_stm32(controller, hub_mac, hub_name)
-    if conn is None:
-        print("Failed to autodetect connection, make sure you have installed prerequisites")
+            logging.debug("Failed: %s", traceback.format_exc())
 
-    print("Succeeded with %s", conn.__class__.__name__)
+    if conn is None:
+        raise Exception("Failed to autodetect connection, make sure you have installed prerequisites")
+
+    logging.info("Succeeded with %s", conn.__class__.__name__)
     return conn
 
