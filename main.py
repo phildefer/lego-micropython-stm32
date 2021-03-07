@@ -71,7 +71,7 @@ def demo_tilt_sensor_precise(movehub):
     limit = 10
 
     def callback(Mylist): 
-        log.info("Tilt:%s, %s, %s",Mylist[0],Mylist[1],Mylist[2] )
+        log.info("Tilt:%s, %s, %s",Mylist[0],Mylist[1],Mylist[2])
 
     movehub.tilt_sensor.subscribe(callback, mode=TiltSensor.MODE_3AXIS_ACCEL)
     while cnt < limit:
@@ -122,14 +122,16 @@ def demo_port_cd_motor(movehub):
 
 
 if __name__ == '__main__':
-    parameters = {}  
+    parameters = {}
+    logging.basicConfig(level=logging.WARNING)
+    logging.basicConfig(level=logging.INFO)
     hub = MoveHub(**parameters)
     demo_led_colors(hub)
     demo_voltage(hub)
     demo_motors_timed(hub)
     demo_color_sensor(hub)
     demo_port_cd_motor(hub)
-    demo_tilt_sensor_precise(hub)
+    #demo_tilt_sensor_precise(hub)
     demo_tilt_sensor_simple(hub)
     #
 
