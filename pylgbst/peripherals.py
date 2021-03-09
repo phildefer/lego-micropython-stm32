@@ -1,6 +1,6 @@
-#import logging
+import logging
 import math
-#import traceback
+import traceback
 from ustruct import pack, unpack
 #from threading import Thread
 
@@ -9,7 +9,7 @@ from pylgbst.messages import MsgHubProperties, MsgPortOutput, MsgPortInputFmtSet
 #from pylgbst.utilities import queue, str2hex, usbyte, ushort, usint
 from pylgbst.utilities import str2hex, usbyte, ushort, usint
 
-#log = logging.getLogger('peripherals')
+log = logging.getLogger('peripherals')
 
 # COLORS
 COLOR_BLACK = 0x00
@@ -64,7 +64,6 @@ class Peripheral(object):
 
         self._subscribers = set()
         self._port_mode = MsgPortInputFmtSingle(self.port, None, False, 1)
-        #print("Peripheral initialization, port: ",self.port,", port_mode: ",self._port_mode)
 
         self._incoming_port_data = () #queue.Queue(1)  # limit 1 means we drop data if we can't handle it fast enough
         #thr = Thread(target=self._queue_reader)
@@ -81,30 +80,18 @@ class Peripheral(object):
     def set_port_mode(self, mode, send_updates=None, update_delta=None):
         assert not self.virtual_ports, "TODO: support combined mode for sensors"
 
-        
-        if self._port_mode is None:
-            msg = MsgPortInputFmtSetupSingle(self.port, mode)
-            resp = self.hub.send(msg)
-            #assert isinstance(resp, MsgPortInputFmtSingle)
-            self._port_mode = resp
-            return
-        
-
         if send_updates is None:
             send_updates = self._port_mode.upd_enabled
-            #send_updates = 1
-            print("Implied update is enabled=%s", send_updates)
+            log.debug("Implied update is enabled=%s", send_updates)
 
         if update_delta is None:
             update_delta = self._port_mode.upd_delta
-            #update_delta = 1
-            print("Implied update delta=%s", update_delta)
+            log.debug("Implied update delta=%s", update_delta)
 
-        
         if self._port_mode.mode == mode \
                 and self._port_mode.upd_enabled == send_updates \
                 and self._port_mode.upd_delta == update_delta:
-            print("Already in target mode, no need to switch")
+            log.debug("Already in target mode, no need to switch")
             return
         else:
             msg = MsgPortInputFmtSetupSingle(self.port, mode, update_delta, send_updates)
@@ -126,7 +113,6 @@ class Peripheral(object):
     def subscribe(self, callback, mode=0x00, granularity=1):
         if self._port_mode.mode != mode and self._subscribers:
             raise ValueError("Port is in active mode %r, unsubscribe all subscribers first" % self._port_mode)
-        #print("DEBUG: subscribing ... , port mode",mode,"callback: ",callback, "granularity: ", granularity)
         self.set_port_mode(mode, True, granularity)
         if callback:
             self._subscribers.add(callback)
@@ -136,7 +122,7 @@ class Peripheral(object):
             self._subscribers.remove(callback)
 
         if not self._port_mode.upd_enabled:
-            pass #log.warning("Attempt to unsubscribe while port value updates are off: %s", self)
+            log.warning("Attempt to unsubscribe while port value updates are off: %s", self)
         elif not self._subscribers:
             self.set_port_mode(self._port_mode.mode, False)
 
@@ -146,7 +132,7 @@ class Peripheral(object):
         return args
 
     def queue_port_data(self, msg):
-        self._incoming_port_data = msg
+        '''self._incoming_port_data = msg
         self._handle_port_data(msg)
         '''
         try:
@@ -154,8 +140,7 @@ class Peripheral(object):
             #self._queue_reader()
             self._handle_port_data(msg)
         except BaseException:
-            print("Dropped port data: ", msg)
-        '''
+            log.debug("Dropped port data: %r", msg)
 
     def _decode_port_data(self, msg):
         """
@@ -181,8 +166,7 @@ class Peripheral(object):
             try:
                 self._handle_port_data(msg)
             except BaseException:
-                #log.warning("%s", traceback.format_exc())
-                print("Failed to handle port data by ", self," :", msg)
+                log.warning("%s", traceback.format_exc())
 
     def describe_possible_modes(self):
         mode_info = self.hub.send(MsgPortInfoRequest(self.port, MsgPortInfoRequest.INFO_MODE_INFO))
@@ -214,7 +198,7 @@ class Peripheral(object):
         for mode in mode_info.input_modes:
             info['input_modes'].append(self._describe_mode(mode))
 
-        #log.debug("Port info for 0x%x: %s", self.port, info)
+        log.debug("Port info for 0x%x: %s", self.port, info)
         return info
 
     def _describe_mode(self, mode):
@@ -225,7 +209,7 @@ class Peripheral(object):
                 assert isinstance(resp, MsgPortModeInfo)
                 descr[MsgPortModeInfoRequest.INFO_TYPES[info]] = resp.value
             except RuntimeError:
-                #log.debug("Got error while requesting info 0x%x: %s", info, traceback.format_exc())
+                log.debug("Got error while requesting info 0x%x: %s", info, traceback.format_exc())
                 if info == MsgPortModeInfoRequest.INFO_NAME:
                     break
         return descr
@@ -284,11 +268,11 @@ class Motor(Peripheral):
             return relative
 
         if relative < -1:
-            #log.warning("Speed cannot be less than -1")
+            log.warning("Speed cannot be less than -1")
             relative = -1
 
         if relative > 1:
-            #log.warning("Speed cannot be more than 1")
+            log.warning("Speed cannot be more than 1")
             relative = 1
 
         absolute = math.ceil(relative * 100)  # scale of 100 is proven by experiments
@@ -456,7 +440,7 @@ class EncodedMotor(Motor):
             speed = unpack("<b", data[0:1])[0]
             return (speed,)
         else:
-            #log.debug("Got motor sensor data while in unexpected mode: %r", self._port_mode)
+            log.debug("Got motor sensor data while in unexpected mode: %r", self._port_mode)
             return ()
 
     def subscribe(self, callback, mode=SENSOR_ANGLE, granularity=1):
@@ -517,6 +501,9 @@ class TiltSensor(Peripheral):
         TRI_FRONT: "FRONT",
     }
 
+    def __init__(self, parent, port):
+        super(TiltSensor, self).__init__(parent, port)
+
     def subscribe(self, callback, mode=MODE_3AXIS_SIMPLE, granularity=1):
         super(TiltSensor, self).subscribe(callback, mode, granularity)
 
@@ -549,7 +536,7 @@ class TiltSensor(Peripheral):
         elif self._port_mode.mode == self.MODE_CALIBRATION:
             return (usbyte(data, 0), usbyte(data, 1), usbyte(data, 2))
         else:
-            print("Got tilt sensor data while in unexpected mode: ", self._port_mode)
+            log.debug("Got tilt sensor data while in unexpected mode: %r", self._port_mode)
             return ()
 
     # TODO: add some methods from official doc, like
@@ -612,7 +599,7 @@ class VisionSensor(Peripheral):
         elif self._port_mode.mode == self.CALIBRATE:
             return [ushort(data, x * 2) for x in range(8)]
         else:
-            print("Unhandled VisionSensor data in mode %s: %s", self._port_mode.mode, str2hex(data))
+            log.debug("Unhandled VisionSensor data in mode %s: %s", self._port_mode.mode, str2hex(data))
             return ()
 
     def set_color(self, color):

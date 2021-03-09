@@ -6,6 +6,7 @@ import random
 import struct
 import time
 import micropython
+import logging
 from pylgbst.comms import Connection, MOVE_HUB_HW_UUID_SERV, MOVE_HUB_HW_UUID_CHAR, \
     MOVE_HUB_HARDWARE_HANDLE
 from pylgbst.comms.ble_advertising import decode_services, decode_name
@@ -43,6 +44,7 @@ _HUB_SERVICE_UUID = bluetooth.UUID("00001623-1212-efde-1623-785feabcd123")
 ENABLE_NOTIFICATIONS_HANDLE = 0x000f
 ENABLE_NOTIFICATIONS_VALUE = b'\x01\x00'
 
+log = logging.getLogger('ble')
 
 class BLESimpleCentral:
     def __init__(self, ble):
@@ -108,32 +110,31 @@ class BLESimpleCentral:
             conn_handle, _, _ = data
             if conn_handle == self._conn_handle:
                 # If it was initiated by us, it'll already be reset.
-                print("disconnected ?!?!?")
+                log.info("Device disconnected")
                 self._reset()
 
         elif event == _IRQ_GATTC_SERVICE_RESULT:
             # Connected device returned a service.
             conn_handle, start_handle, end_handle, uuid = data
-            #print("service", data)
             if conn_handle == self._conn_handle and uuid == _HUB_SERVICE_UUID:
                 self._start_handle, self._end_handle = start_handle, end_handle
 
         elif event == _IRQ_GATTC_SERVICE_DONE:
             # Service query complete.
             if self._start_handle and self._end_handle:
-                print("Discovering characteristics....")
+                log.info("Discovering characteristics....")
                 self._ble.gattc_discover_characteristics(
                     self._conn_handle, self._start_handle, self._end_handle
                 )
             else:
-                print("Failed to find uart service.")
+                log.warning("Failed to find uart service.")
 
         elif event == _IRQ_GATTC_CHARACTERISTIC_RESULT:
             # Connected device returned a characteristic.
             conn_handle, def_handle, value_handle, properties, uuid = data
             if conn_handle == self._conn_handle and uuid == _HUB_CHAR_UUID:
                 self._char_handle = value_handle
-                print("Get characteristics results %s ,%s", value_handle, self.is_connected())
+                log.debug("Get characteristics results: ", value_handle, properties, uuid)
 
         elif event == _IRQ_GATTC_CHARACTERISTIC_DONE:
             # Characteristic query complete.
@@ -142,11 +143,11 @@ class BLESimpleCentral:
                 if self._conn_callback:
                     self._conn_callback()
             else:
-                print("Failed to find characteristic.")
+                log.warning("Failed to find characteristic.")
 
         elif event == _IRQ_GATTC_WRITE_DONE:
             conn_handle, value_handle, status = data
-            print("TX complete")
+            log.debug("TX complete")
 
         elif event == _IRQ_GATTC_NOTIFY:
             conn_handle, value_handle, notify_data = data
@@ -156,15 +157,12 @@ class BLESimpleCentral:
                     self._notify_callback(value_handle, notify_data)
 
         else:
-            print("Unexpected IRQ received: %s", event)
+            log.warning("Unexpected IRQ received: %s", event)
 
     # Returns true if we've successfully connected and discovered characteristics.
     def is_connected(self):
-        #print("Params:%s, %s", self._conn_handle, self._char_handle )
         if self._conn_handle is None:
             return False
-        #if self._char_handle is None:
-        #    return False
         return True
 
     # Find a device advertising the environmental sensor service.
@@ -194,9 +192,8 @@ class BLESimpleCentral:
     # Send data over the UART
     def write(self, handle, value, response=False):
         if not self.is_connected():
-            #print("Connection not yet established, skipping ... ")
+            log.warning("Connection not yet established, skipping ... ")
             return
-        #print("writing: %s",value)
         self._ble.gattc_write(self._conn_handle, handle , value, 1 if response else 0)
 
 
@@ -211,15 +208,17 @@ class STM32Connection(Connection):
         self.ble = bluetooth.BLE()
         self.name = controller
         self._device = BLESimpleCentral(self.ble)
-        print("STM32 Connection initialized")
-        #self._device.scan(callback=on_scan)
 
     def on_scan(self,addr_type, addr, name):
         if addr_type is not None:
-            print("Found peripheral:", addr_type, addr, name)
+            MyMac=""
+            for i in range(6):
+                MyMac+=(hex(addr[i])+":")
+                i+=1
+            log.info("Found peripheral: %s", MyMac)
             self._device.connect()
         else:
-            print("No peripheral found.")
+            log.warning("No peripheral found.")
 
     def connect(self, hub_mac=None):
         self._device.scan(callback=self.on_scan)
@@ -234,9 +233,6 @@ class STM32Connection(Connection):
         self._device.write(handle,data,False)
 
     def enable_notifications(self):
-        print("Enabling notifications")
-        #self._device.notify()
-        #ble.gatts_notify(device._conn_handle, self._value_handle, data)
         self._device.write(ENABLE_NOTIFICATIONS_HANDLE, ENABLE_NOTIFICATIONS_VALUE,False)
     
     def set_notify_handler(self, handler):

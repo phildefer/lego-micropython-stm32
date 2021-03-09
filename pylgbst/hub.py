@@ -1,4 +1,4 @@
-#import threading
+import logging
 import time
 
 from pylgbst import get_connection_auto
@@ -7,7 +7,7 @@ from pylgbst.peripherals import *
 #from pylgbst.utilities import queue
 from pylgbst.utilities import str2hex, usbyte, ushort
 
-#log = logging.getLogger('hub')
+log = logging.getLogger('hub')
 
 PERIPHERAL_TYPES = {
     MsgHubAttachedIO.DEV_MOTOR: Motor,
@@ -52,7 +52,7 @@ class Hub(object):
 
     def __del__(self):
         if self.connection and self.connection.is_alive():
-            print("Disconnecting ...")
+            log.info("Disconnecting ...")
             self.connection.disconnect()
 
     def add_message_handler(self, classname, callback):
@@ -63,7 +63,7 @@ class Hub(object):
         :type msg: pylgbst.messages.DownstreamMsg
         :rtype: pylgbst.messages.UpstreamMsg
         """
-        #log.debug("Send message: %r", msg)
+        log.debug("Send message: %r", msg)
         msgbytes = msg.bytes()
         if msg.needs_reply == True:
             self._sync_request = msg
@@ -72,30 +72,29 @@ class Hub(object):
             while self._sync_replies == None:
                 time.sleep(0.1)
             resp = self._sync_replies
+            log.debug("Fetched sync reply: %r", resp)
             self._sync_replies = None;
-            #print("Fetched sync reply: %r", resp)
             if isinstance(resp, MsgGenericError):
                 raise RuntimeError(resp.message())
             return resp
         else:
             self.connection.write(self.HUB_HARDWARE_HANDLE, msgbytes)
-            print("Message w/o reply sent")
             return None
 
     def _notify(self, handle, data):
-        #print("Notification on", handle ,"with data: ", str2hex(data))
+        log.debug("Notification on %s: %s", handle, str2hex(data))
         
         msg = self._get_upstream_msg(data)
 
         if self._sync_request:
             if self._sync_request.is_reply(msg):
-                #print("Found matching upstream msg")
+                log.debug("Found matching upstream msg: %r", msg)
                 self._sync_replies = msg
                 self._sync_request = None
 
         for msg_class, handler in self._msg_handlers:
             if isinstance(msg, msg_class):
-                #print("Handling msg with %s: %r", handler, msg)
+                log.debug("Handling msg with %s: %r", handler, msg)
                 handler(msg)
 
     def _get_upstream_msg(self, data):
@@ -105,13 +104,13 @@ class Hub(object):
         for msg_kind in UPSTREAM_MSGS:
             if msg_type == msg_kind.TYPE:
                 msg = msg_kind.decode(msg_kind,data)
-                #print("Decoded message: %r", msg)
+                log.debug("Decoded message: %r", msg)
                 break
         assert msg
         return msg
 
     def _handle_error(self, msg):
-        #log.warning("Command error: %s", msg.message())
+        log.warning("Command error: %s", msg.message())
         if self._sync_request:
             self._sync_request = None
             self._sync_replies = msg
@@ -121,30 +120,29 @@ class Hub(object):
         :type msg: MsgHubAction
         """
         if msg.action == MsgHubAction.UPSTREAM_DISCONNECT:
-            #log.warning("Hub disconnects")
+            log.warning("Hub disconnects")
             self.connection.disconnect()
         elif msg.action == MsgHubAction.UPSTREAM_SHUTDOWN:
-            #log.warning("Hub switches off")
+            log.warning("Hub switches off")
             self.connection.disconnect()
 
     def _handle_device_change(self, msg):
         if msg.event == MsgHubAttachedIO.EVENT_DETACHED:
-            #log.debug("Detaching peripheral: %s", self.peripherals[msg.port])
+            log.debug("Detaching peripheral: %s", self.peripherals[msg.port])
             self.peripherals.pop(msg.port)
             return
 
         assert msg.event in (msg.EVENT_ATTACHED, msg.EVENT_ATTACHED_VIRTUAL)
         port = msg.port
         dev_type = ushort(msg.payload, 0)
-        #print("port: ", port, "device: ",dev_type)
 
         if dev_type in PERIPHERAL_TYPES:
             self.peripherals[port] = PERIPHERAL_TYPES[dev_type](self, port)
         else:
-            print("Have not dedicated class for peripheral type %x on port %x", dev_type, port)
+            log.warning("Have not dedicated class for peripheral type %x on port %x", dev_type, port)
             self.peripherals[port] = Peripheral(self, port)
 
-        print("Attached peripheral: ", self.peripherals[msg.port])
+        log.info("Attached peripheral: %s", self.peripherals[msg.port])
 
         if msg.event == msg.EVENT_ATTACHED:
             hw_revision = reversed([usbyte(msg.payload, x) for x in range(2, 6)])
@@ -157,7 +155,7 @@ class Hub(object):
     def _handle_sensor_data(self, msg):
         assert isinstance(msg, (MsgPortValueSingle, MsgPortValueCombined))
         if msg.port not in self.peripherals:
-            print("Notification on port with no device: ", msg.port)
+            log.warning("Notification on port with no device: %s", msg.port)
             return
         device = self.peripherals[msg.port]
         device.queue_port_data(msg)
@@ -233,32 +231,28 @@ class MoveHub(Hub):
         for num in range(0, 100):
             devices = get_dev_set()
             if all(devices):
-                print("All devices are present: %s", devices)
+                log.debug("All devices are present: %s", devices)
                 return
-            #print("Waiting for builtin devices to appear: %s", devices)
+            log.debug("Waiting for builtin devices to appear: %s", devices)
             time.sleep(0.1)
-        print("Got only these devices: %s", get_dev_set())
+        log.warning("Got only these devices: %s", get_dev_set())
 
     def _report_status(self):
         # maybe add firmware version
         name = self.send(MsgHubProperties(MsgHubProperties.ADVERTISE_NAME, MsgHubProperties.UPD_REQUEST))
-        #time.sleep(1)
         mac = self.send(MsgHubProperties(MsgHubProperties.PRIMARY_MAC, MsgHubProperties.UPD_REQUEST))
-        #print("%s on %s", name.payload, str2hex(mac.payload))
-        #time.sleep(1)
+        log.info("%s on %s", name.payload, str2hex(mac.payload))
 
         voltage = self.send(MsgHubProperties(MsgHubProperties.VOLTAGE_PERC, MsgHubProperties.UPD_REQUEST))
         assert isinstance(voltage, MsgHubProperties)
-        #print("Voltage: %s%%", usbyte(voltage.parameters, 0))
-        #time.sleep(1)
+        log.info("Voltage: %s%%", usbyte(voltage.parameters, 0))
 
         voltage = self.send(MsgHubAlert(MsgHubAlert.LOW_VOLTAGE, MsgHubAlert.UPD_REQUEST))
-        #time.sleep(1)
-        #print("Hello :", voltage)
+        
         assert isinstance(voltage, MsgHubAlert)
         if voltage != None:
             if not voltage.is_ok():
-                print("Low voltage, check power source (maybe replace battery)")
+                log.warning("Low voltage, check power source (maybe replace battery)")
 
     # noinspection PyTypeChecker
     def _handle_device_change(self, msg):
